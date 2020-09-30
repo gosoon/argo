@@ -50,6 +50,12 @@ func NewDeleteCommand() *cobra.Command {
 				errors.CheckError(err)
 				workflows = append(workflows, listed...)
 			}
+
+			if len(workflows) == 0 {
+				fmt.Printf("No resources found")
+				return
+			}
+
 			for _, wf := range workflows {
 				if !dryRun {
 					_, err := serviceClient.DeleteWorkflow(ctx, &workflowpkg.WorkflowDeleteRequest{Name: wf.Name, Namespace: wf.Namespace})
