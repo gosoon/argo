@@ -135,10 +135,10 @@ export class WorkflowsService {
             .then(res => res.body as Workflow);
     }
 
-    public getContainerLogsFromCluster(workflow: Workflow, nodeId: string, container: string): Observable<LogEntry> {
+    public getContainerLogsFromCluster(workflow: Workflow, nodeId: string, container: string, grep: string): Observable<LogEntry> {
         const namespace = workflow.metadata.namespace;
         const name = workflow.metadata.name;
-        const podLogsURL = `api/v1/workflows/${namespace}/${name}/log?logOptions.container=${container}&logOptions.follow=true${nodeId ? `&podName=${nodeId}` : ''}`;
+        const podLogsURL = `api/v1/workflows/${namespace}/${name}/log?logOptions.container=${container}&grep=${grep}&logOptions.follow=true${nodeId ? `&podName=${nodeId}` : ''}`;
         return requests
             .loadEventSource(podLogsURL)
             .filter(line => !!line)
@@ -151,7 +151,7 @@ export class WorkflowsService {
                 // that the pod has completed, then we want to allow the unsubscribe to happen since no additional logs exist.
                 return Observable.fromPromise(this.isWorkflowNodePendingOrRunning(workflow, nodeId)).switchMap(isPendingOrRunning => {
                     if (isPendingOrRunning) {
-                        return this.getContainerLogsFromCluster(workflow, nodeId, container);
+                        return this.getContainerLogsFromCluster(workflow, nodeId, container, grep);
                     }
 
                     // If our workflow is completed, then simply complete the Observable since nothing else
@@ -172,7 +172,7 @@ export class WorkflowsService {
         return this.isNodePendingOrRunning(node);
     }
 
-    public getContainerLogsFromArtifact(workflow: Workflow, nodeId: string, container: string, archived: boolean) {
+    public getContainerLogsFromArtifact(workflow: Workflow, nodeId: string, container: string, grep: string, archived: boolean) {
         return Observable.of(this.hasArtifactLogs(workflow, nodeId, container))
             .switchMap(hasArtifactLogs => {
                 if (!hasArtifactLogs) {
@@ -182,11 +182,12 @@ export class WorkflowsService {
                 return Observable.fromPromise(requests.get(this.getArtifactLogsUrl(workflow, nodeId, container, archived)));
             })
             .mergeMap(r => r.text.split('\n'))
-            .map(content => ({content} as LogEntry));
+            .map(content => ({content} as LogEntry))
+            .filter(x => !!x.content.match(grep));
     }
 
-    public getContainerLogs(workflow: Workflow, nodeId: string, container: string, archived: boolean): Observable<LogEntry> {
-        const getLogsFromArtifact = () => this.getContainerLogsFromArtifact(workflow, nodeId, container, archived);
+    public getContainerLogs(workflow: Workflow, nodeId: string, container: string, grep: string, archived: boolean): Observable<LogEntry> {
+        const getLogsFromArtifact = () => this.getContainerLogsFromArtifact(workflow, nodeId, container, grep, archived);
 
         // If our workflow is archived, don't even bother inspecting the cluster for logs since it's likely
         // that the Workflow and associated pods have been deleted
@@ -194,17 +195,21 @@ export class WorkflowsService {
             return getLogsFromArtifact();
         }
 
-        return this.getContainerLogsFromCluster(workflow, nodeId, container).catch(getLogsFromArtifact);
+        return this.getContainerLogsFromCluster(workflow, nodeId, container, grep).catch(getLogsFromArtifact);
     }
 
     public getArtifactLogsUrl(workflow: Workflow, nodeId: string, container: string, archived: boolean) {
-        return this.getArtifactDownloadUrl(workflow, nodeId, container + '-logs', archived);
+        return this.getArtifactDownloadUrl(workflow, nodeId, container + '-logs', archived, false);
     }
 
-    public getArtifactDownloadUrl(workflow: Workflow, nodeId: string, artifactName: string, archived: boolean) {
-        return archived
-            ? `artifacts-by-uid/${workflow.metadata.uid}/${nodeId}/${encodeURIComponent(artifactName)}`
-            : `artifacts/${workflow.metadata.namespace}/${workflow.metadata.name}/${nodeId}/${encodeURIComponent(artifactName)}`;
+    public getArtifactDownloadUrl(workflow: Workflow, nodeId: string, artifactName: string, archived: boolean, isInput: boolean) {
+        if (archived) {
+            const endpoint = isInput ? 'input-artifacts-by-uid' : 'artifacts-by-uid';
+            return `${endpoint}/${workflow.metadata.uid}/${nodeId}/${encodeURIComponent(artifactName)}`;
+        } else {
+            const endpoint = isInput ? 'input-artifacts' : 'artifacts';
+            return `${endpoint}/${workflow.metadata.namespace}/${workflow.metadata.name}/${nodeId}/${encodeURIComponent(artifactName)}`;
+        }
     }
 
     private isNodePendingOrRunning(node: NodeStatus) {
@@ -214,7 +219,7 @@ export class WorkflowsService {
     private hasArtifactLogs(workflow: Workflow, nodeId: string, container: string) {
         const node = workflow.status.nodes[nodeId];
 
-        if (!node || !node.outputs) {
+        if (!node || !node.outputs || !node.outputs.artifacts) {
             return false;
         }
 

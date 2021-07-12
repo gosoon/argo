@@ -5,6 +5,7 @@ import * as React from 'react';
 import * as models from '../../../../models';
 import {Artifact, NodeStatus, Workflow} from '../../../../models';
 import {Button} from '../../../shared/components/button';
+import {ClipboardText} from '../../../shared/components/clipboard-text';
 import {DropDownButton} from '../../../shared/components/drop-down-button';
 import {DurationPanel} from '../../../shared/components/duration-panel';
 import {InlineTable} from '../../../shared/components/inline-table/inline-table';
@@ -61,7 +62,7 @@ const AttributeRows = (props: {attributes: {title: string; value: any}[]}) => (
 
 const WorkflowNodeSummary = (props: Props) => {
     const attributes = [
-        {title: 'NAME', value: props.node.name},
+        {title: 'NAME', value: <ClipboardText text={props.node.name} />},
         {title: 'TYPE', value: props.node.type},
         {
             title: 'PHASE',
@@ -112,10 +113,10 @@ const WorkflowNodeSummary = (props: Props) => {
         attributes.splice(
             2,
             0,
-            {title: 'POD NAME', value: props.node.id},
+            {title: 'POD NAME', value: <ClipboardText text={props.node.id} />},
             {
                 title: 'HOST NODE NAME',
-                value: props.node.hostNodeName
+                value: <ClipboardText text={props.node.hostNodeName} />
             }
         );
     }
@@ -184,7 +185,7 @@ const WorkflowNodeInputs = (props: Props) => (
     <>
         <h5>Inputs</h5>
         <WorkflowNodeParameters parameters={props.node.inputs && props.node.inputs.parameters} />
-        <WorkflowNodeArtifacts {...props} artifacts={props.node.inputs && props.node.inputs.artifacts} />
+        <WorkflowNodeArtifacts {...props} isInput={true} artifacts={props.node.inputs && props.node.inputs.artifacts} />
     </>
 );
 
@@ -200,7 +201,7 @@ const WorkflowNodeOutputs = (props: Props) => (
             </div>
         </div>
         <WorkflowNodeParameters parameters={props.node.outputs && props.node.outputs.parameters} />
-        <WorkflowNodeArtifacts {...props} artifacts={props.node.outputs && props.node.outputs.artifacts} />
+        <WorkflowNodeArtifacts {...props} isInput={false} artifacts={props.node.outputs && props.node.outputs.artifacts} />
     </>
 );
 
@@ -361,12 +362,12 @@ class WorkflowNodeContainers extends React.Component<Props, {selectedSidecar: st
     }
 }
 
-const WorkflowNodeArtifacts = (props: {workflow: Workflow; node: NodeStatus; archived: boolean; artifacts: Artifact[]}) => {
+const WorkflowNodeArtifacts = (props: {workflow: Workflow; node: NodeStatus; archived: boolean; isInput: boolean; artifacts: Artifact[]}) => {
     const artifacts =
         (props.artifacts &&
             props.artifacts.map(artifact =>
                 Object.assign({}, artifact, {
-                    downloadUrl: services.workflows.getArtifactDownloadUrl(props.workflow, props.node.id, artifact.name, props.archived),
+                    downloadUrl: services.workflows.getArtifactDownloadUrl(props.workflow, props.node.id, artifact.name, props.archived, props.isInput),
                     stepName: props.node.name,
                     dateCreated: props.node.finishedAt,
                     nodeName: props.node.name

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gorilla/handlers"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -303,10 +304,12 @@ func (as *argoServer) newHTTPServer(ctx context.Context, port int, artifactServe
 	mustRegisterGWHandler(clusterwftemplatepkg.RegisterClusterWorkflowTemplateServiceHandlerFromEndpoint, ctx, gwmux, endpoint, dialOpts)
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { webhookInterceptor(w, r, gwmux) })
-	mux.HandleFunc("/artifacts/", artifactServer.GetArtifact)
-	mux.HandleFunc("/artifacts-by-uid/", artifactServer.GetArtifactByUID)
-	mux.HandleFunc("/oauth2/redirect", as.oAuth2Service.HandleRedirect)
-	mux.HandleFunc("/oauth2/callback", as.oAuth2Service.HandleCallback)
+	mux.HandleFunc("/artifacts/", artifactServer.GetOutputArtifact)
+	mux.HandleFunc("/input-artifacts/", artifactServer.GetInputArtifact)
+	mux.HandleFunc("/artifacts-by-uid/", artifactServer.GetOutputArtifactByUID)
+	mux.HandleFunc("/input-artifacts-by-uid/", artifactServer.GetInputArtifactByUID)
+	mux.Handle("/oauth2/redirect", handlers.ProxyHeaders(http.HandlerFunc(as.oAuth2Service.HandleRedirect)))
+	mux.Handle("/oauth2/callback", handlers.ProxyHeaders(http.HandlerFunc(as.oAuth2Service.HandleCallback)))
 	mux.Handle("/metrics", promhttp.Handler())
 	// we only enable HTST if we are secure mode, otherwise you would never be able access the UI
 	mux.HandleFunc("/", static.NewFilesServer(as.baseHRef, as.tlsConfig != nil && as.hsts, as.xframeOptions, as.accessControlAllowOrigin).ServerFiles)
